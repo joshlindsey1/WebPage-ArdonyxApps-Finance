@@ -2,7 +2,7 @@
 This repo owns the public Ardonyx Finance web experience.
 
 - `index.html` is the public landing/product page.
-- `app.html` is the app UI for signup, login, Plaid Link, account sync, and transaction review.
+- `app.html` is the app UI for signup, login, account overview, optional Plaid Link, sync, and transaction review.
 - `oauth.html` returns Plaid OAuth institutions back to `app.html`.
 - `Assets/js/env.js` sets the backend API base URL.
 - `Assets/js/app.js` calls the FastAPI backend.
@@ -59,3 +59,5 @@ For hosted Plaid OAuth flows, set the backend `PLAID_REDIRECT_URI` to the public
 ```env
 PLAID_REDIRECT_URI=https://finance.ardonyxapps.com/oauth.html
 ```
+
+Plaid OAuth redirect URIs must use HTTPS in non-local production-style flows. For local OAuth testing, use an HTTPS tunnel URL or a registered hosted web URL.

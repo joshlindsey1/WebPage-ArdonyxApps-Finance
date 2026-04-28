@@ -2,8 +2,10 @@ const state = {
   mode: "login",
   user: null,
   accounts: [],
+  plaidAccounts: [],
   items: [],
-  transactions: []
+  transactions: [],
+  editingAccountId: null
 };
 
 const oauthStorageKey = "ardonyx_plaid_oauth";
@@ -37,14 +39,48 @@ const els = {
   toggleConfirmPassword: document.getElementById("toggle-confirm-password"),
   dashboardSubtitle: document.getElementById("dashboard-subtitle"),
   statusLine: document.getElementById("status-line"),
-  connectBtn: document.getElementById("connect-btn"),
+  addAccountBtn: document.getElementById("add-account-btn"),
   syncBtn: document.getElementById("sync-btn"),
   refreshBtn: document.getElementById("refresh-btn"),
   institutionCount: document.getElementById("institution-count"),
   accountCount: document.getElementById("account-count"),
   transactionCount: document.getElementById("transaction-count"),
   accountsList: document.getElementById("accounts-list"),
-  transactionsList: document.getElementById("transactions-list")
+  transactionsList: document.getElementById("transactions-list"),
+  accountModal: document.getElementById("account-modal"),
+  accountModalTitle: document.getElementById("account-modal-title"),
+  closeAccountModal: document.getElementById("close-account-modal"),
+  cancelAccount: document.getElementById("cancel-account"),
+  deleteAccount: document.getElementById("delete-account"),
+  unlinkAccount: document.getElementById("unlink-account"),
+  saveAccount: document.getElementById("save-account"),
+  accountForm: document.getElementById("account-form"),
+  accountMessage: document.getElementById("account-message"),
+  accountName: document.getElementById("account-name"),
+  accountInstitution: document.getElementById("account-institution"),
+  accountType: document.getElementById("account-type"),
+  accountSubtype: document.getElementById("account-subtype"),
+  accountCurrency: document.getElementById("account-currency"),
+  accountNature: document.getElementById("account-nature"),
+  accountOpenedOn: document.getElementById("account-opened-on"),
+  accountClosedOn: document.getElementById("account-closed-on"),
+  creditFields: document.getElementById("credit-fields"),
+  loanFields: document.getElementById("loan-fields"),
+  plaidLinkRow: document.getElementById("plaid-link-row"),
+  existingPlaidRow: document.getElementById("existing-plaid-row"),
+  existingPlaidSelectWrap: document.getElementById("existing-plaid-select-wrap"),
+  existingPlaidAccount: document.getElementById("existing-plaid-account"),
+  accountCreditLimit: document.getElementById("account-credit-limit"),
+  accountStatementDay: document.getElementById("account-statement-day"),
+  accountPaymentDueDay: document.getElementById("account-payment-due-day"),
+  accountApr: document.getElementById("account-apr"),
+  accountPrincipal: document.getElementById("account-principal"),
+  accountInterestRate: document.getElementById("account-interest-rate"),
+  accountTermMonths: document.getElementById("account-term-months"),
+  accountFirstPaymentOn: document.getElementById("account-first-payment-on"),
+  accountLinkNone: document.getElementById("account-link-none"),
+  accountLinkExisting: document.getElementById("account-link-existing"),
+  accountLinkNew: document.getElementById("account-link-new")
 };
 
 async function api(path, options = {}) {
@@ -68,6 +104,8 @@ async function api(path, options = {}) {
         message = payload.detail;
       } else if (payload.detail.error) {
         message = payload.detail.error;
+      } else if (payload.detail.details && payload.detail.details.error_message) {
+        message = payload.detail.details.error_message;
       }
     }
     throw new Error(message);
@@ -84,7 +122,7 @@ function setMode(mode) {
   els.usernameField.hidden = !signup;
   els.confirmPasswordWrap.hidden = !signup;
   els.authTitle.textContent = signup ? "Create account" : "Sign in";
-  els.authCaption.textContent = signup ? "Start your Ardonyx Finance workspace." : "Access your connected account dashboard.";
+  els.authCaption.textContent = signup ? "Start your Ardonyx Finance workspace." : "Access your account overview.";
   els.authSubmit.textContent = signup ? "Create account" : "Sign in";
   els.identifierLabel.textContent = signup ? "Email" : "Email or username";
   els.identifier.type = signup ? "email" : "text";
@@ -100,6 +138,7 @@ function showAuth() {
   els.authView.hidden = false;
   els.dashboard.hidden = true;
   els.sessionBar.hidden = true;
+  closeAccountModal();
 }
 
 function showDashboard() {
@@ -127,11 +166,6 @@ function dateLabel(value) {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
 }
 
-function balanceFor(account) {
-  const balances = account.balances || {};
-  return balances.current ?? balances.available ?? null;
-}
-
 function escapeHtml(value) {
   return String(value || "")
     .replaceAll("&", "&amp;")
@@ -141,23 +175,42 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function fieldValue(input) {
+  return input.value.trim() || null;
+}
+
+function numberValue(input) {
+  return input.value === "" ? null : Number(input.value);
+}
+
+function dateInputValue(value) {
+  return value ? String(value).slice(0, 10) : "";
+}
+
+function accountById(accountId) {
+  return state.accounts.find((account) => Number(account.id) === Number(accountId)) || null;
+}
+
 function renderAccounts() {
   els.accountCount.textContent = state.accounts.length;
   const institutions = new Set(state.items.map((item) => item.institution_name || item.institution_id || item.item_id));
   els.institutionCount.textContent = institutions.size;
 
   if (!state.accounts.length) {
-    els.accountsList.innerHTML = '<div class="empty">No connected accounts yet.</div>';
+    els.accountsList.innerHTML = '<div class="empty">No Ardonyx accounts yet. Add an account to start shaping your workspace.</div>';
     return;
   }
 
   els.accountsList.innerHTML = state.accounts.map((account) => `
     <article class="row-item">
       <div class="row-top">
-        <div class="row-title">${escapeHtml(account.name || account.official_name || "Account")}</div>
-        <div class="amount">${money(balanceFor(account))}</div>
+        <div class="row-title">${escapeHtml(account.name || "Account")}</div>
+        <div class="row-actions">
+          <span class="amount">${account.plaid_item_id || account.plaid_account_id ? "Linked" : "Manual"}</span>
+          <button class="mini-button edit-account" type="button" data-account-id="${account.id}">Edit</button>
+        </div>
       </div>
-      <div class="row-meta">${escapeHtml(account.institution_name || "Institution")} · ${escapeHtml(account.subtype || account.type || "account")} ${account.mask ? "··" + escapeHtml(account.mask) : ""}</div>
+      <div class="row-meta">${escapeHtml(account.institution || "No institution")} - ${escapeHtml(account.subtype || account.type || "account")} - ${escapeHtml(account.nature || "asset")} - ${escapeHtml(account.currency || "USD")}</div>
     </article>
   `).join("");
 }
@@ -176,7 +229,7 @@ function renderTransactions() {
         <div class="row-title">${escapeHtml(transaction.merchant_name || transaction.description || "Transaction")}</div>
         <div class="amount">${money(transaction.amount, transaction.currency)}</div>
       </div>
-      <div class="row-meta">${dateLabel(transaction.posted_at || transaction.authorized_at)} · ${escapeHtml(transaction.account_name || transaction.institution_name || "Account")}${transaction.pending ? " · pending" : ""}</div>
+      <div class="row-meta">${dateLabel(transaction.posted_at || transaction.authorized_at)} - ${escapeHtml(transaction.account_name || transaction.institution_name || "Account")}${transaction.pending ? " - pending" : ""}</div>
     </article>
   `).join("");
 }
@@ -188,16 +241,202 @@ function renderData() {
 
 async function loadDashboard() {
   els.statusLine.textContent = "Loading...";
-  const [itemsPayload, accountsPayload, transactionsPayload] = await Promise.all([
+  const [itemsPayload, accountsPayload, plaidAccountsPayload, transactionsPayload] = await Promise.all([
     api("/api/plaid/items"),
     api("/api/accounts"),
+    api("/api/plaid/accounts"),
     api("/api/transactions?limit=50")
   ]);
   state.items = itemsPayload.items || [];
   state.accounts = accountsPayload.accounts || [];
+  state.plaidAccounts = plaidAccountsPayload.accounts || [];
   state.transactions = transactionsPayload.transactions || [];
   renderData();
   els.statusLine.textContent = "Updated " + new Date().toLocaleTimeString();
+}
+
+function renderPlaidAccountOptions() {
+  if (!state.plaidAccounts.length) {
+    els.existingPlaidAccount.innerHTML = '<option value="">No synced Plaid accounts yet</option>';
+    els.existingPlaidRow.classList.add("disabled");
+    els.accountLinkExisting.disabled = true;
+    if (els.accountLinkExisting.checked) {
+      els.accountLinkNone.checked = true;
+    }
+    return;
+  }
+
+  els.existingPlaidRow.classList.remove("disabled");
+  els.accountLinkExisting.disabled = false;
+  els.existingPlaidAccount.innerHTML = state.plaidAccounts.map((account) => {
+    const label = `${account.institution_name || "Institution"} - ${account.name || account.official_name || "Account"}${account.mask ? " -" + account.mask : ""}`;
+    return `<option value="${escapeHtml(account.account_id)}">${escapeHtml(label)}</option>`;
+  }).join("");
+}
+
+function setRadioMode(mode) {
+  els.accountLinkNone.checked = mode === "none";
+  els.accountLinkExisting.checked = mode === "existing";
+  els.accountLinkNew.checked = mode === "new";
+}
+
+function openAccountModal(account = null) {
+  state.editingAccountId = account ? account.id : null;
+  els.accountForm.reset();
+  els.accountMessage.textContent = "";
+  renderPlaidAccountOptions();
+  els.accountModalTitle.textContent = account ? "Edit account" : "Add account";
+  els.saveAccount.textContent = account ? "Save changes" : "Save account";
+  els.deleteAccount.hidden = !account;
+  els.unlinkAccount.hidden = !account || (!account.plaid_item_id && !account.plaid_account_id);
+
+  if (account) {
+    els.accountName.value = account.name || "";
+    els.accountInstitution.value = account.institution || "";
+    els.accountType.value = account.type || "checking";
+    els.accountSubtype.value = account.subtype || "";
+    els.accountCurrency.value = account.currency || "USD";
+    els.accountNature.value = account.nature || "asset";
+    els.accountOpenedOn.value = dateInputValue(account.opened_on);
+    els.accountClosedOn.value = dateInputValue(account.closed_on);
+    els.accountCreditLimit.value = account.credit_limit ?? "";
+    els.accountStatementDay.value = account.statement_day ?? "";
+    els.accountPaymentDueDay.value = account.payment_due_day ?? "";
+    els.accountApr.value = account.apr ?? "";
+    els.accountPrincipal.value = account.principal ?? "";
+    els.accountInterestRate.value = account.interest_rate ?? "";
+    els.accountTermMonths.value = account.term_months ?? "";
+    els.accountFirstPaymentOn.value = dateInputValue(account.first_payment_on);
+    if (account.plaid_account_id && state.plaidAccounts.some((plaidAccount) => plaidAccount.account_id === account.plaid_account_id)) {
+      els.existingPlaidAccount.value = account.plaid_account_id;
+      setRadioMode("existing");
+    } else {
+      setRadioMode("none");
+    }
+  } else {
+    els.accountCurrency.value = "USD";
+    els.accountNature.value = "asset";
+    setRadioMode("none");
+  }
+
+  updateAccountTypeFields();
+  els.accountModal.hidden = false;
+  els.accountName.focus();
+}
+
+function closeAccountModal() {
+  if (els.accountModal) {
+    els.accountModal.hidden = true;
+  }
+  state.editingAccountId = null;
+}
+
+function updateAccountTypeFields() {
+  const type = els.accountType.value;
+  const isCredit = type === "credit_card";
+  const isLoan = type === "loan" || type === "mortgage";
+  const canPlaidLink = type !== "cash";
+
+  els.creditFields.hidden = !isCredit;
+  els.loanFields.hidden = !isLoan;
+  els.plaidLinkRow.hidden = !canPlaidLink;
+  els.existingPlaidSelectWrap.hidden = !canPlaidLink || !els.accountLinkExisting.checked;
+  if (!canPlaidLink) {
+    els.accountLinkNone.checked = true;
+  }
+
+  if (isCredit || isLoan) {
+    els.accountNature.value = "liability";
+  } else if (type !== "other") {
+    els.accountNature.value = "asset";
+  }
+}
+
+function accountPayload() {
+  const existingAccount = state.editingAccountId ? accountById(state.editingAccountId) : null;
+  const selectedPlaidAccount = state.plaidAccounts.find((account) => account.account_id === els.existingPlaidAccount.value);
+  const useExistingPlaid = els.accountLinkExisting.checked && selectedPlaidAccount;
+  const linkNewPlaid = els.accountLinkNew.checked;
+  const preserveCurrentPlaid = existingAccount && !useExistingPlaid && !linkNewPlaid;
+  const preservedPlaidItemId = preserveCurrentPlaid ? existingAccount.plaid_item_id : null;
+  const preservedPlaidAccountId = preserveCurrentPlaid ? existingAccount.plaid_account_id : null;
+  return {
+    name: els.accountName.value,
+    institution: useExistingPlaid ? selectedPlaidAccount.institution_name : fieldValue(els.accountInstitution),
+    type: els.accountType.value,
+    nature: els.accountNature.value,
+    subtype: fieldValue(els.accountSubtype),
+    currency: els.accountCurrency.value.toUpperCase(),
+    opened_on: fieldValue(els.accountOpenedOn),
+    closed_on: fieldValue(els.accountClosedOn),
+    credit_limit: numberValue(els.accountCreditLimit),
+    statement_day: numberValue(els.accountStatementDay),
+    payment_due_day: numberValue(els.accountPaymentDueDay),
+    apr: numberValue(els.accountApr),
+    principal: numberValue(els.accountPrincipal),
+    interest_rate: numberValue(els.accountInterestRate),
+    term_months: numberValue(els.accountTermMonths),
+    first_payment_on: fieldValue(els.accountFirstPaymentOn),
+    plaid_item_id: useExistingPlaid ? selectedPlaidAccount.item_id : preservedPlaidItemId,
+    plaid_account_id: useExistingPlaid ? selectedPlaidAccount.account_id : preservedPlaidAccountId,
+    link_with_plaid: linkNewPlaid
+  };
+}
+
+async function submitAccount(event) {
+  event.preventDefault();
+  els.accountMessage.textContent = "";
+
+  try {
+    const editingId = state.editingAccountId;
+    const path = editingId ? `/api/accounts/${editingId}` : "/api/accounts";
+    const method = editingId ? "PATCH" : "POST";
+    const result = await api(path, {
+      method,
+      body: JSON.stringify(accountPayload())
+    });
+    closeAccountModal();
+    await loadDashboard();
+    if (result.link_with_plaid) {
+      els.statusLine.textContent = "Account saved. Opening institution link...";
+      await startLinkFlow(result.account.id);
+    } else {
+      els.statusLine.textContent = "Account saved.";
+    }
+  } catch (err) {
+    els.accountMessage.textContent = err.message;
+  }
+}
+
+async function deleteCurrentAccount() {
+  if (!state.editingAccountId) {
+    return;
+  }
+  if (!window.confirm("Delete this Ardonyx account? This will not delete the bank connection itself.")) {
+    return;
+  }
+  try {
+    await api(`/api/accounts/${state.editingAccountId}`, { method: "DELETE" });
+    closeAccountModal();
+    await loadDashboard();
+    els.statusLine.textContent = "Account deleted.";
+  } catch (err) {
+    els.accountMessage.textContent = err.message;
+  }
+}
+
+async function unlinkCurrentAccount() {
+  if (!state.editingAccountId) {
+    return;
+  }
+  try {
+    await api(`/api/accounts/${state.editingAccountId}/unlink-plaid`, { method: "POST", body: "{}" });
+    closeAccountModal();
+    await loadDashboard();
+    els.statusLine.textContent = "Plaid mapping removed from account.";
+  } catch (err) {
+    els.accountMessage.textContent = err.message;
+  }
 }
 
 async function loadMe() {
@@ -250,6 +489,7 @@ async function logout() {
   await api("/api/auth/logout", { method: "POST", body: "{}" }).catch(() => null);
   state.user = null;
   state.accounts = [];
+  state.plaidAccounts = [];
   state.items = [];
   state.transactions = [];
   showAuth();
@@ -271,7 +511,7 @@ function clearOAuthSession() {
   localStorage.removeItem(oauthStorageKey);
 }
 
-async function getLinkToken() {
+async function getLinkToken(accountId = null) {
   els.statusLine.textContent = "Requesting link token...";
   const payload = await api("/api/plaid/link-token", {
     method: "POST",
@@ -281,7 +521,7 @@ async function getLinkToken() {
   if (!linkToken) {
     throw new Error("Link token was not returned");
   }
-  saveOAuthSession({ linkToken, createdAt: new Date().toISOString() });
+  saveOAuthSession({ linkToken, accountId, createdAt: new Date().toISOString() });
   return linkToken;
 }
 
@@ -292,11 +532,13 @@ function openPlaid(params) {
     onSuccess: async (publicToken, metadata) => {
       try {
         els.statusLine.textContent = "Connecting institution...";
+        const session = loadOAuthSession();
         await api("/api/plaid/exchange-public-token", {
           method: "POST",
           body: JSON.stringify({
             public_token: publicToken,
-            institution: metadata && metadata.institution ? metadata.institution : null
+            institution: metadata && metadata.institution ? metadata.institution : null,
+            canonical_account_id: params.accountId || (session ? session.accountId : null)
           })
         });
         clearOAuthSession();
@@ -312,11 +554,11 @@ function openPlaid(params) {
   handler.open();
 }
 
-async function startLinkFlow() {
+async function startLinkFlow(accountId = null) {
   try {
-    const token = await getLinkToken();
+    const token = await getLinkToken(accountId);
     els.statusLine.textContent = "Opening Plaid Link...";
-    openPlaid({ token });
+    openPlaid({ token, accountId });
   } catch (err) {
     els.statusLine.textContent = err.message;
   }
@@ -331,13 +573,14 @@ async function resumeOAuthIfNeeded() {
   els.statusLine.textContent = "Completing OAuth...";
   openPlaid({
     token: session.linkToken,
+    accountId: session.accountId || null,
     receivedRedirectUri: window.location.href
   });
 }
 
 async function syncNow() {
   try {
-    els.statusLine.textContent = "Syncing accounts...";
+    els.statusLine.textContent = "Syncing linked institutions...";
     const accountsResult = await api("/api/plaid/accounts/sync", { method: "POST", body: "{}" });
     els.statusLine.textContent = "Loading recent transaction history...";
     const backfillResult = await api("/api/plaid/transactions/backfill", {
@@ -347,7 +590,7 @@ async function syncNow() {
     els.statusLine.textContent = "Syncing transaction changes...";
     const syncResult = await api("/api/plaid/transactions/sync", { method: "POST", body: "{}" });
     await loadDashboard();
-    els.statusLine.textContent = `Accounts synced: ${accountsResult.accounts_synced}. Recent loaded: ${backfillResult.loaded}. Added: ${syncResult.added}, modified: ${syncResult.modified}, removed: ${syncResult.removed}.`;
+    els.statusLine.textContent = `Linked accounts synced: ${accountsResult.accounts_synced}. Recent loaded: ${backfillResult.loaded}. Added: ${syncResult.added}, modified: ${syncResult.modified}, removed: ${syncResult.removed}.`;
   } catch (err) {
     els.statusLine.textContent = err.message;
   }
@@ -368,7 +611,26 @@ bindPasswordToggle(els.togglePassword, els.password);
 bindPasswordToggle(els.toggleConfirmPassword, els.confirmPassword);
 els.authForm.addEventListener("submit", submitAuth);
 els.logoutBtn.addEventListener("click", logout);
-els.connectBtn.addEventListener("click", startLinkFlow);
+els.addAccountBtn.addEventListener("click", openAccountModal);
+els.closeAccountModal.addEventListener("click", closeAccountModal);
+els.cancelAccount.addEventListener("click", closeAccountModal);
+els.deleteAccount.addEventListener("click", deleteCurrentAccount);
+els.unlinkAccount.addEventListener("click", unlinkCurrentAccount);
+els.accountType.addEventListener("change", updateAccountTypeFields);
+els.accountLinkNone.addEventListener("change", updateAccountTypeFields);
+els.accountLinkExisting.addEventListener("change", updateAccountTypeFields);
+els.accountLinkNew.addEventListener("change", updateAccountTypeFields);
+els.accountForm.addEventListener("submit", submitAccount);
+els.accountsList.addEventListener("click", (event) => {
+  const button = event.target.closest(".edit-account");
+  if (!button) {
+    return;
+  }
+  const account = accountById(button.dataset.accountId);
+  if (account) {
+    openAccountModal(account);
+  }
+});
 els.syncBtn.addEventListener("click", syncNow);
 els.refreshBtn.addEventListener("click", loadDashboard);
 
