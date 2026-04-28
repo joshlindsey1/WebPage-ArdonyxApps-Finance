@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ardonyx Finance | App</title>
+    <meta
+      name="description"
+      content="Sign in to Ardonyx Finance to connect accounts, sync transactions, and review balances."
+    />
+    <meta name="theme-color" content="#111933" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Instrument+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="Assets/css/app.css" />
+    <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <a class="brand" href="index.html" aria-label="Ardonyx Finance home">
+          <span class="brand-mark">
+            <img src="Assets/images/ArdonyxFinanceLogo.png" alt="" data-fallback-target="app-logo-fallback" />
+            <span id="app-logo-fallback" class="brand-fallback" aria-hidden="true">AF</span>
+          </span>
+          <span class="brand-copy">
+            <strong>Ardonyx Finance</strong>
+            <span>Connected dashboard</span>
+          </span>
+        </a>
+        <div class="session-actions" id="session-bar" hidden>
+          <span id="session-email"></span>
+          <button class="button button-subtle" id="logout-btn" type="button">Sign out</button>
+        </div>
+      </header>
+
+      <main>
+        <section class="auth-layout" id="auth-view" hidden>
+          <div class="auth-panel">
+            <div>
+              <p class="eyebrow">Private Workspace</p>
+              <h1 id="auth-title">Sign in</h1>
+              <p id="auth-caption">Access your connected accounts and transaction dashboard.</p>
+            </div>
+
+            <div class="segmented" role="tablist" aria-label="Authentication mode">
+              <button id="login-tab" type="button" class="active">Sign in</button>
+              <button id="signup-tab" type="button">Create account</button>
+            </div>
+
+            <form class="auth-form" id="auth-form">
+              <div class="field-grid" id="name-fields" hidden>
+                <label>
+                  <span>First name</span>
+                  <input id="first-name" autocomplete="given-name" />
+                </label>
+                <label>
+                  <span>M.I.</span>
+                  <input id="middle-initial" maxlength="1" autocomplete="additional-name" />
+                </label>
+                <label>
+                  <span>Last name</span>
+                  <input id="last-name" autocomplete="family-name" />
+                </label>
+              </div>
+
+              <label id="username-field" hidden>
+                <span>Username</span>
+                <input id="username" autocomplete="username" />
+              </label>
+
+              <label>
+                <span id="identifier-label">Email</span>
+                <input id="identifier" type="email" autocomplete="email" required />
+              </label>
+
+              <label>
+                <span>Password</span>
+                <span class="password-field">
+                  <input id="password" type="password" autocomplete="current-password" required minlength="8" />
+                  <button class="icon-button password-toggle" id="toggle-password" type="button" aria-label="Show password" aria-pressed="false">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path>
+                      <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                  </button>
+                </span>
+              </label>
+
+              <label id="confirm-password-wrap" hidden>
+                <span>Confirm password</span>
+                <span class="password-field">
+                  <input id="confirm-password" type="password" autocomplete="new-password" minlength="8" />
+                  <button class="icon-button password-toggle" id="toggle-confirm-password" type="button" aria-label="Show confirmed password" aria-pressed="false">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path>
+                      <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                  </button>
+                </span>
+              </label>
+
+              <button class="button button-primary" id="auth-submit" type="submit">Sign in</button>
+              <div class="message" id="auth-message"></div>
+            </form>
+          </div>
+
+          <aside class="auth-summary">
+            <div class="summary-card">
+              <span>Connected accounts</span>
+              <strong>Bank linking, balance visibility, and transaction review.</strong>
+            </div>
+            <div class="summary-card">
+              <span>Sync status</span>
+              <strong>Manual sync today, scheduled syncs next.</strong>
+            </div>
+            <div class="summary-card">
+              <span>Privacy</span>
+              <strong>User-owned data access through consented connections.</strong>
+            </div>
+          </aside>
+        </section>
+
+        <section class="dashboard" id="dashboard" hidden>
+          <div class="dashboard-heading">
+            <div>
+              <p class="eyebrow">Dashboard</p>
+              <h1>Accounts and activity</h1>
+              <p id="dashboard-subtitle">Ardonyx Finance workspace</p>
+            </div>
+            <div class="toolbar">
+              <button class="button button-primary" id="connect-btn" type="button">Connect bank</button>
+              <button class="button button-subtle" id="sync-btn" type="button">Sync now</button>
+              <button class="button button-subtle" id="refresh-btn" type="button">Refresh</button>
+            </div>
+          </div>
+
+          <div class="status-line" id="status-line"></div>
+
+          <div class="stats">
+            <article>
+              <span>Institutions</span>
+              <strong id="institution-count">0</strong>
+            </article>
+            <article>
+              <span>Accounts</span>
+              <strong id="account-count">0</strong>
+            </article>
+            <article>
+              <span>Transactions</span>
+              <strong id="transaction-count">0</strong>
+            </article>
+          </div>
+
+          <div class="dashboard-grid">
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Accounts</h2>
+              </div>
+              <div class="panel-body">
+                <div class="list" id="accounts-list"></div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Recent transactions</h2>
+              </div>
+              <div class="panel-body">
+                <div class="list" id="transactions-list"></div>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="Assets/js/env.js"></script>
+    <script src="Assets/js/app.js"></script>
+    <script src="Assets/js/main.js"></script>
+  </body>
+</html>
